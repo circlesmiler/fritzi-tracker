@@ -7,6 +7,8 @@
 // Include Particle Device OS APIs
 #include "Particle.h"
 #include "clickButton.h"
+#include "Cooldown.h"
+#include "fritzi-tracker.h"
 
 // Let Device OS manage the connection to the Particle Cloud
 SYSTEM_MODE(AUTOMATIC);
@@ -21,6 +23,7 @@ SerialLogHandler logHandler(LOG_LEVEL_INFO);
 #define SERVO_PIN D0
 #define SPEAKER_PIN D1
 #define BUTTON_PIN D4
+#define HOME_LED_PIN D7
 
 Servo myservo;
 ClickButton button(BUTTON_PIN, LOW, CLICKBTN_PULLUP);
@@ -30,41 +33,25 @@ const double MAX_DISTANCE = 50.0;
 const double MAX_SERVO_VALUE = 180.0;
 double distance = MAX_DISTANCE;
 
-// Generally, you should use "unsigned long" for variables that hold time
-// The value will quickly become too large for an int to store
-unsigned long previousApiCall = 0;            // will store last time LED was updated
-const long API_CALL_INTERVAL = 5 * 60 * 1000; // millis
-
-unsigned long previousUpdate = 0;      // will store last time LED was updated
-const long UPDATE_INTERVAL = 5 * 1000; // millis
+Cooldown catPosition(5 * 60 * 1000, requestCatPosition);
+Cooldown homeLed(500, blinkHomeLed);
+Cooldown servo(5000, updateServo);
+Cooldown alarmSound(5000, playTone);
 
 bool homeAcknowledged = false;
-
-int setDistance(String distanceStr)
-{
-  distance = atoi(distanceStr);
-  Log.info("Setting distance to: %f", distance);
-  return 0;
-}
-
-void updateData(const char *event, const char *data)
-{
-  setDistance(data);
-}
 
 void setup()
 {
   Log.info("Setup running...");
 
   // Subscribe to the integration response event
-  Particle.subscribe("hook-response/fritzi", updateData, MY_DEVICES);
+  Particle.subscribe("hook-response/fritzi", updateDistance, MY_DEVICES);
   Particle.variable("distance", distance);
-  Particle.variable("previousMillis", previousApiCall);
   Particle.function("setDistance", setDistance);
   Log.info("Particle cloud setup done.");
 
-  myservo.attach(SERVO_PIN); // attach the servo on the D0 pin to the servo object
-  pinMode(D7, OUTPUT);       // set D7 as an output so we can flash the onboard LED
+  myservo.attach(SERVO_PIN);     // attach the servo on the D0 pin to the servo object
+  pinMode(HOME_LED_PIN, OUTPUT); // set D7 as an output so we can flash the onboard LED
   pinMode(BUTTON_PIN, INPUT_PULLUP);
 
   // Setup button timers (all in milliseconds / ms)
@@ -74,34 +61,31 @@ void setup()
   button.longClickTime = 1000; // time until "held-down clicks" register
 
   Log.info("Testing Servo");
-  myservo.write(0);
-  delay(1000);
-  myservo.write(90); // test the servo by moving it to 90°
-  delay(1000);
-  myservo.write(180);
+  myservo.write(25);
 
   Log.info("Setup done.");
 }
 
-void updateLight()
+void loop()
 {
-  // Light on if Fritzi @ Home
-  if (distance < HOME_DISTANCE)
+  // Update button state
+  button.Update();
+  int buttonClicks = button.clicks;
+  if (buttonClicks == 1)
   {
-    digitalWrite(D7, HIGH);
+    Log.info("Button clicked");
+    homeAcknowledged = true;
   }
-  else
+  if (buttonClicks == 2)
   {
-    digitalWrite(D7, LOW);
+    Log.info("Button clicked twice");
+    homeAcknowledged = false;
   }
-}
 
-void playTone()
-{
-  if (!homeAcknowledged && distance < HOME_DISTANCE)
-  {
-    tone(SPEAKER_PIN, 440, 2000L);
-  }
+  catPosition.update();
+  servo.update();
+  alarmSound.update();
+  homeLed.update();
 }
 
 void updateServo()
@@ -114,45 +98,67 @@ void updateServo()
   double servoValue = (myDist / MAX_DISTANCE * MAX_SERVO_VALUE) - 11.0;
 
   // Left and right is not exactly 180° and 0°... fixing it here
-  int fixedServoValue = (int) servoValue;
-  if (fixedServoValue <= 2) {
+  int fixedServoValue = (int)servoValue;
+  if (fixedServoValue <= 2)
+  {
     fixedServoValue = 2;
   }
-  if (fixedServoValue >= 165) {
+  if (fixedServoValue >= 165)
+  {
     fixedServoValue = 165;
   }
   Log.info("Update servo to: %d", fixedServoValue);
   myservo.write(fixedServoValue);
 }
 
-void loop()
+void playTone()
 {
-  unsigned long currentMillis = millis();
-
-  // Update button state
-  button.Update();
-  int buttonClicks = button.clicks;
-  if (buttonClicks == 1)
+  if (isHome() && !homeAcknowledged)
   {
-    Log.info("Button clicked");
-    homeAcknowledged = true;
+    tone(SPEAKER_PIN, 300, 2000L);
   }
-  if (buttonClicks == 2) {
-    Log.info("Button clicked twice");
-    homeAcknowledged = false;
-  }
+}
 
-  if (currentMillis - previousApiCall >= API_CALL_INTERVAL)
+int homeLedState = LOW;
+void blinkHomeLed()
+{
+  if (isHome() && !homeAcknowledged)
   {
-    previousApiCall = currentMillis;
-    Particle.publish("fritzi");
+    homeLedState = (homeLedState == LOW) ? HIGH : LOW;
+    digitalWrite(HOME_LED_PIN, homeLedState);
+  } else if (isHome()){
+    digitalWrite(HOME_LED_PIN, HIGH);
+  } else {
+    digitalWrite(HOME_LED_PIN, LOW);
   }
+}
 
-  if (currentMillis - previousUpdate >= UPDATE_INTERVAL)
-  {
-    previousUpdate = currentMillis;
-    updateServo();
-    updateLight();
-    playTone();
-  }
+void requestCatPosition()
+{
+  Particle.publish("fritzi");
+}
+
+/// @brief Callback function the receives data from tracker API call
+/// @param event ?
+/// @param data the distance data
+void updateDistance(const char *event, const char *data)
+{
+  setDistance(data);
+}
+
+/// @brief Converts the given string to a number and sets the distance value
+/// @param distanceStr distance as string
+/// @return 0, if setting was OK
+int setDistance(String distanceStr)
+{
+  distance = atoi(distanceStr);
+  Log.info("Setting distance to: %f", distance);
+  return 0;
+}
+
+/// @brief Tells if cat is nearby home, see #HOME_DISTANCE
+/// @return true, if cat is nearby home, otherwise false
+bool isHome()
+{
+  return distance <= HOME_DISTANCE;
 }
