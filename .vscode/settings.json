@@ -1,0 +1,20 @@
+{
+    "extensions.ignoreRecommendations": true,
+    "C_Cpp.default.configurationProvider": "particle.particle-vscode-core",
+    "files.associations": {
+        "*.ino": "cpp"
+    },
+    "particle.targetDevice": "370036001147353136383631",
+    "particle.firmwareVersion": "3.3.1",
+    "particle.targetPlatform": "photon",
+    "C_Cpp.errorSquiggles": "enabled",
+    "configurations": [
+        {
+            "name": "Libraries",
+            "includePath": [
+                "${workspaceFolder}/lib/**",
+                "${default}"
+            ]
+        }
+    ]
+}
