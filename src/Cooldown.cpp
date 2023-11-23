@@ -1,7 +1,7 @@
 #include "Cooldown.h"
 
-Cooldown::Cooldown(long interval, void (*func)())
-    : interval(interval), func(func), previousMillis(0) {}
+Cooldown::Cooldown(long intervalMillis, void (*func)())
+    : interval(intervalMillis), func(func), previousMillis(0) {}
 
 void Cooldown::update()
 {
@@ -11,4 +11,12 @@ void Cooldown::update()
         previousMillis = currentMillis;
         func();
     }
+}
+
+long Cooldown::getInterval() {
+    return interval;
+}
+
+void Cooldown::setInterval(long intervalMillis) {
+    interval = intervalMillis;
 }

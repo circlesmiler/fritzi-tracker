@@ -29,7 +29,7 @@ Servo myservo;
 ClickButton button(BUTTON_PIN, LOW, CLICKBTN_PULLUP);
 
 const double HOME_DISTANCE = 5.0;
-const double MAX_DISTANCE = 50.0;
+const double MAX_DISTANCE = 600.0;
 const double MAX_SERVO_VALUE = 180.0;
 double distance = MAX_DISTANCE;
 
@@ -45,9 +45,12 @@ void setup()
   Log.info("Setup running...");
 
   // Subscribe to the integration response event
-  Particle.subscribe("hook-response/fritzi", updateDistance, MY_DEVICES);
+  Particle.subscribe("hook-response/fritzi", updateDistance);
   Particle.variable("distance", distance);
+
+  Particle.function("setApiUpdateIntervalMinutes", setApiRequestIntervalMinutes);
   Particle.function("setDistance", setDistance);
+  
   Log.info("Particle cloud setup done.");
 
   myservo.attach(SERVO_PIN);     // attach the servo on the D0 pin to the servo object
@@ -64,6 +67,13 @@ void setup()
   myservo.write(25);
 
   Log.info("Setup done.");
+  
+  // Wait for cloud connected
+  while(!Particle.connected()) {
+    Particle.process();
+  }
+  Log.info("Cloud connected...");
+  requestCatPosition();
 }
 
 void loop()
@@ -76,9 +86,7 @@ void loop()
     Log.info("Button clicked");
     homeAcknowledged = true;
   }
-  if (buttonClicks == 2)
-  {
-    Log.info("Button clicked twice");
+  if (!isHome()) {
     homeAcknowledged = false;
   }
 
@@ -115,7 +123,7 @@ void playTone()
 {
   if (isHome() && !homeAcknowledged)
   {
-    tone(SPEAKER_PIN, 300, 2000L);
+    tone(SPEAKER_PIN, 300, 500L);
   }
 }
 
@@ -135,6 +143,7 @@ void blinkHomeLed()
 
 void requestCatPosition()
 {
+  Log.info("Requesting cat position");
   Particle.publish("fritzi");
 }
 
@@ -146,14 +155,17 @@ void updateDistance(const char *event, const char *data)
   setDistance(data);
 }
 
-/// @brief Converts the given string to a number and sets the distance value
-/// @param distanceStr distance as string
-/// @return 0, if setting was OK
 int setDistance(String distanceStr)
 {
-  distance = atoi(distanceStr);
+  distance = atof(distanceStr);
   Log.info("Setting distance to: %f", distance);
-  return 0;
+  return atoi(distanceStr);
+}
+
+int setApiRequestIntervalMinutes(String minutes) {
+  int min = atoi(minutes);
+  catPosition.setInterval(min * 60 * 1000);
+  return min;
 }
 
 /// @brief Tells if cat is nearby home, see #HOME_DISTANCE
