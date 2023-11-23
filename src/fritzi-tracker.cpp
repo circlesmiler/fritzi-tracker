@@ -22,11 +22,14 @@ SerialLogHandler logHandler(LOG_LEVEL_INFO);
 
 #define SERVO_PIN D0
 #define SPEAKER_PIN D1
-#define BUTTON_PIN D4
-#define HOME_LED_PIN D7
+#define BUTTON_ACK_PIN D4
+#define BUTTON_MUTE_PIN D5
+#define MUTE_LED_PIN D3
+#define HOME_LED_PIN D2
 
 Servo myservo;
-ClickButton button(BUTTON_PIN, LOW, CLICKBTN_PULLUP);
+ClickButton ackButton(BUTTON_ACK_PIN, LOW, CLICKBTN_PULLUP);
+ClickButton muteButton(BUTTON_MUTE_PIN, LOW, CLICKBTN_PULLUP);
 
 const double HOME_DISTANCE = 5.0;
 const double MAX_DISTANCE = 600.0;
@@ -39,6 +42,7 @@ Cooldown servo(5000, updateServo);
 Cooldown alarmSound(5000, playTone);
 
 bool homeAcknowledged = false;
+bool mute = false;
 
 void setup()
 {
@@ -53,15 +57,11 @@ void setup()
   
   Log.info("Particle cloud setup done.");
 
-  myservo.attach(SERVO_PIN);     // attach the servo on the D0 pin to the servo object
-  pinMode(HOME_LED_PIN, OUTPUT); // set D7 as an output so we can flash the onboard LED
-  pinMode(BUTTON_PIN, INPUT_PULLUP);
-
-  // Setup button timers (all in milliseconds / ms)
-  // (These are default if not set, but changeable for convenience)
-  button.debounceTime = 20;    // Debounce timer in ms
-  button.multiclickTime = 250; // Time limit for multi clicks
-  button.longClickTime = 1000; // time until "held-down clicks" register
+  myservo.attach(SERVO_PIN);
+  pinMode(HOME_LED_PIN, OUTPUT);
+  pinMode(MUTE_LED_PIN, OUTPUT);
+  pinMode(BUTTON_ACK_PIN, INPUT_PULLUP);
+  pinMode(BUTTON_MUTE_PIN, INPUT_PULLUP);
 
   Log.info("Testing Servo");
   myservo.write(25);
@@ -79,21 +79,53 @@ void setup()
 void loop()
 {
   // Update button state
-  button.Update();
-  int buttonClicks = button.clicks;
-  if (buttonClicks == 1)
-  {
-    Log.info("Button clicked");
-    homeAcknowledged = true;
-  }
-  if (!isHome()) {
-    homeAcknowledged = false;
-  }
+  checkAckButton();
+  checkMuteButton();
+
+  updateMuteLed();
+
+  resetAcknowledgeStateIfHome();
 
   catPosition.update();
   servo.update();
   alarmSound.update();
   homeLed.update();
+}
+
+void resetAcknowledgeStateIfHome()
+{
+  if (!isHome())
+  {
+    homeAcknowledged = false;
+  }
+}
+
+void checkMuteButton()
+{
+  muteButton.Update();
+  int muteButtonClicks = muteButton.clicks;
+  if (muteButtonClicks == 1)
+  {
+    Log.info("Mute button clicked");
+    mute = !mute;
+  }
+}
+
+void checkAckButton()
+{
+  ackButton.Update();
+  int ackButtonClicks = ackButton.clicks;
+  if (ackButtonClicks == 1)
+  {
+    Log.info("Acknowledge button clicked");
+    homeAcknowledged = true;
+  }
+}
+
+void updateMuteLed()
+{
+  int muteLedState = mute ? HIGH : LOW;
+  digitalWrite(MUTE_LED_PIN, muteLedState);
 }
 
 void updateServo()
@@ -121,7 +153,7 @@ void updateServo()
 
 void playTone()
 {
-  if (isHome() && !homeAcknowledged)
+  if (isHome() && !homeAcknowledged && !mute)
   {
     tone(SPEAKER_PIN, 300, 500L);
   }

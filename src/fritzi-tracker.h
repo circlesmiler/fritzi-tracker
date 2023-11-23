@@ -8,6 +8,10 @@ bool isHome();
 
 void playTone();
 void updateServo();
+void updateMuteLed();
+void checkAckButton();
+void checkMuteButton();
+void resetAcknowledgeStateIfHome();
 void blinkHomeLed();
 
 void requestCatPosition();
