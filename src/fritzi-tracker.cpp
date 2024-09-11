@@ -51,10 +51,13 @@ void setup()
   // Subscribe to the integration response event
   Particle.subscribe("hook-response/fritzi", updateDistance);
   Particle.variable("distance", distance);
+  Particle.variable("acknowledged", homeAcknowledged);
+  Particle.variable("mute", mute);
 
-  Particle.function("setApiUpdateIntervalMinutes", setApiRequestIntervalMinutes);
   Particle.function("setDistance", setDistance);
-  
+  Particle.function("setAcknowledged", setAcknowledged);
+  Particle.function("setMute", setMute);
+
   Log.info("Particle cloud setup done.");
 
   myservo.attach(SERVO_PIN);
@@ -67,9 +70,10 @@ void setup()
   myservo.write(25);
 
   Log.info("Setup done.");
-  
+
   // Wait for cloud connected
-  while(!Particle.connected()) {
+  while (!Particle.connected())
+  {
     Particle.process();
   }
   Log.info("Cloud connected...");
@@ -135,7 +139,7 @@ void updateServo()
   myDist = myDist > MAX_DISTANCE ? MAX_DISTANCE : myDist;
 
   // Calculate servo position (plus correction for meeting the middle)
-  double servoValue = (myDist / MAX_DISTANCE * MAX_SERVO_VALUE) - 11.0;
+  double servoValue = (180.0 - (myDist / MAX_DISTANCE * MAX_SERVO_VALUE)) - 11.0;
 
   // Left and right is not exactly 180° and 0°... fixing it here
   int fixedServoValue = (int)servoValue;
@@ -166,9 +170,13 @@ void blinkHomeLed()
   {
     homeLedState = (homeLedState == LOW) ? HIGH : LOW;
     digitalWrite(HOME_LED_PIN, homeLedState);
-  } else if (isHome()){
+  }
+  else if (isHome())
+  {
     digitalWrite(HOME_LED_PIN, HIGH);
-  } else {
+  }
+  else
+  {
     digitalWrite(HOME_LED_PIN, LOW);
   }
 }
@@ -194,7 +202,22 @@ int setDistance(String distanceStr)
   return atoi(distanceStr);
 }
 
-int setApiRequestIntervalMinutes(String minutes) {
+int setMute(String muteStr)
+{
+  int muteInt = strToBoolInt(muteStr);
+  mute = muteInt == 1 ? true : false;
+  return muteInt;
+}
+
+int setAcknowledged(String acknowledgeStr)
+{
+  int ackInt = strToBoolInt(acknowledgeStr);
+  homeAcknowledged = ackInt == 1 ? true : false;
+  return ackInt;
+}
+
+int setApiRequestIntervalMinutes(String minutes)
+{
   int min = atoi(minutes);
   catPosition.setInterval(min * 60 * 1000);
   return min;
@@ -205,4 +228,22 @@ int setApiRequestIntervalMinutes(String minutes) {
 bool isHome()
 {
   return distance <= HOME_DISTANCE;
+}
+
+int strToBoolInt(String &muteStr)
+{
+  if (muteStr.equalsIgnoreCase("true"))
+  {
+    return 1;
+  }
+  else if (muteStr.equalsIgnoreCase("false"))
+  {
+    return 0;
+  }
+  else
+  {
+    // Try to parse as int
+    int m = atoi(muteStr);
+    return m;
+  }
 }
